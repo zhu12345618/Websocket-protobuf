@@ -1,0 +1,103 @@
+<!doctype html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <script src="MonaClient.js" src-release="MonaClient.js"></script>
+   
+</head>
+
+<body style="height: 100%;width: 100%;margin:0;padding:0;" >
+    <canvas id="canvas" style="background-color:#000000;height:100%;width:100%;margin:0;padding:0;display:block;" ></canvas>
+
+    <script type="text/javascript">
+    var ns = mc = null;
+    var stream = "";  
+    var isNormalClose = isInit =false;
+    
+    //video.html?url=""
+    // play(GetQueryString('url'));
+   // window.parent.play();
+
+    function play(url){
+        if(mc)
+			mc.close();
+			
+        var arr=url.split("/");
+        stream=arr[2];
+
+        mc = new MonaClient();
+		mc.onWsOpen= function(arg){
+			ns.play(stream);
+            console.log("onWsOpen");
+		}
+
+		mc.connect(arr[0], arr[1], "");
+        ns = new NetStream(mc);
+        ns.bufferTime = 2;
+
+        ns.attachCanvas(document.getElementById("canvas"));
+        if(!isInit){
+            isInit = true;
+            //ns.initAudio(50);	
+        }
+       
+        mc.onWsError = function (arg) {
+            console.log('Stream error ');
+        }
+
+        mc.onWsClose = function (arg) {
+            console.log('Stream closed ')
+            isNormalClose = false;
+            
+            mc = null;
+            ns = null;
+        }
+
+        mc.onWsMessage = function (arg) {
+            console.log('Stream data ' + arg)
+            if (arg.substr(0, 7) == '["__pub') {
+                function loaded() {
+                    
+                }
+                window.setTimeout(loaded, 1000);
+            }
+        }
+    }
+
+    function closeLiveVideoStream() {
+        if(mc) {
+            isNormalClose = true;
+            mc.close();
+            mc = null;
+        }
+    }
+
+
+    function GetQueryString(name){   
+     var reg = new RegExp("(^|&)"+ name +"=([^&]*)(&|$)");
+     var r = window.location.search.substr(1).match(reg);
+     if(r!=null)return  unescape(r[2]); return null;
+
+    }
+
+
+     var Module = {
+	
+        print: (function() {
+            return function(text) {
+                
+            };
+        })(),
+        printErr: function(text) {
+            
+        },
+    };
+
+     
+   
+    </script>
+
+</body>
+
+</html>

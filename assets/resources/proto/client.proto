@@ -1,0 +1,310 @@
+syntax = "proto3";
+
+package proto;
+
+// import "google/protobuf/any.proto";
+
+
+// 包结构
+// +------------------+-------------------+------------------+----------------+
+// |  length(uint32)  |  sequence(uint32) | command(uint16)  |  frame([]byte) |
+// +------------------+-------------------+------------------+----------------+
+//       4 byte              4 byte              2 byte
+// length: 包大小
+// sequence: 请求包的序号,新会话自1开始递增
+// command: 协议号  
+// frame: 具体Message序列化后的二进制数据
+
+// 返回包与请求包格式一致,服务器主动推送包sequence为0,请求返回包sequence同请求包一致
+
+
+// server 
+// 113.10.201.102:3800
+
+enum Proto {
+    option allow_alias = true;
+    UNKNOWN     = 0;
+    PackSize    = 4;
+    SeqIDSize   = 4;
+    CommandSize = 2;
+}
+
+
+enum Command {
+    // 主命令 (0 ~ 99)
+    client_heart_beat     = 0;   // 心跳包..    -> AutoID  
+    client_heart_beat_ack = 1;   // 心跳响应     -> AutoID   
+    user_lobby_login      = 10;  // 登陆        -> UserReqest.LobbyLogin
+    user_lobby_login_ack  = 11;  // 登录响应    -> CommonReply 
+    user_game_login       = 50;  // 进入游戏    -> UserReqest.GameLogin
+    user_game_login_ack   = 51;  // 进入游戏响应  -> CommonReply
+    user_game_exit        = 60;  // 退出游戏     -> UserReqest.GameExit
+    user_game_exit_ack    = 61;  //             -> CommonReply
+    user_lobby_logout     = 400; // 登出请求     -> UserReqest.NilBody
+    user_lobby_logout_ack = 401; //             -> CommonReply
+    server_message_push   = 110; // 服务端通知 踢出提示,以及各种文字提示等 -> CommonReply
+
+
+    // 大厅命令 (500 ~ 999)
+    lobby_change_avatar     = 510;   // 修改头像     -> AutoID
+    lobby_change_avatar_ack = 511;   //               -> CommonReply     
+    lobby_change_nick       = 520;   // 修改昵称      -> String
+    lobby_change_nick_ack   = 521;    //               -> CommonReply 
+    lobby_player_push       = 600; // 大厅个人信息推送   -> Lobby.UserSnapshot
+    lobby_videourl_push     = 601; // 游戏直播拉流地址   -> String
+    lobby_status_push       = 602; // 大厅状态消息推送   -> Lobby.TableSnapshot
+    lobby_playercount_push  = 603; // 游戏人数推送       -> AutoID
+
+    
+    // 游戏命令 (1000 ~ 1999)
+    game_leave_table         = 1000; // 离开桌面            -> Game.JoinTable 
+    game_leave_table_ack     = 1001; // ack                -> CommonReply
+    game_join_table          = 1010; // 进入牌桌            -> Game.LeaveTable 
+    game_join_table_ack      = 1011; // ack                -> CommonReply
+    game_bet                 = 1020; // 下注                -> Game.Bet
+    game_bet_ack             = 1021; //                    -> CommonReply
+    game_tip                 = 1030; // 小费                -> Game.Tip
+    game_tip_ack             = 1031; //                    -> CommonReply
+    game_table_snapshot_push = 1901; // 桌面快照,发送给大厅  客户端忽略此命令   
+    game_table_status_push   = 1902; // 桌面状态 发送给客户端  ->Game.TableStatus 
+    game_table_config_push   = 1903; // 桌面配置 发送给客户端  ->Game.TableConfig
+    game_table_history_push  = 1904; // 桌面历史 发送给客户端  ->Game.TableHistory
+    game_player_push         = 1905; // 个人信息             ->Game.UserSnapshot
+    game_virtual_table_push  = 1906; // 包间信息             ->Game.VirtaulTable.Table
+
+    // 管理命令
+    dealer_command           = 2000;
+
+    // 测试命令 (10000 ~)
+    //test_any = 10001;
+    test_oneof = 10002;
+    test_map   = 10003;
+    
+}
+
+
+message Test {
+    // enum anyType {
+    //    t_int64 = 0;   // AutoID
+    //    t_str = 1;    // String
+    // }
+    // message Any {
+    //    anyType type = 1;
+    //    google.protobuf.Any body = 2;
+    // }
+    message Oneof {
+        oneof test_oneof{
+            string name = 1;
+            int32 age = 2;
+        }
+    }
+    message Map {
+        map<uint32, double> body = 1;
+    }
+}
+
+
+// 请求的通用回复
+message CommonReply {
+    enum Code {
+        SUCCESS                   = 0;
+        ERR_INVALID_PROTOCOL      = 1;
+        ERR_INVALID_DATA          = 2; //客户端数据错误
+        ERR_INVALID_OPERATION     = 3; //无效操作
+        ERR_USER_UNUSABLE         = 6; //用户未激活
+        ERR_ACCOUT_LOCK           = 7; //账户被锁定，禁止下注
+        ERR_AUTHFAIL              = 401; //登录认证失败
+        ERR_SERVER_INTERNAL_ERROR = 500; //服务端内部错误
+    }
+    Code code = 1;
+    string desc = 2;
+}
+
+
+// 用于只传id或一个数字的结果, 如心跳, 大厅人数
+message AutoID {
+    int64 id = 1;
+}
+
+
+// 用于只传字符串的消息，如video url
+message String {
+    string str = 1;
+}
+
+enum GameType {
+    UnKnow     = 0;
+    Baccarat   = 11;
+    LongHu     = 12;
+    Roulette   = 13;
+    SicBo      = 14;
+    FanTan     = 15;
+    TexasPoker = 16;
+}
+
+message UserRequest { //用户主命令
+    // 登录大厅 请求 
+    message LobbyLogin {
+        string name = 1;
+        string passwd = 2;
+        string way = 3;
+        string ip = 4;
+        uint32 platform = 5;
+    }
+
+    // 空消息  退出大厅  
+    message NilBody {};
+
+    enum JoinType {
+        Common   = 0; // 普通（默认）
+        Chain    = 1; // 连环
+        VipTable = 2; // 带包间 
+    }
+
+    message GameLogin {
+        GameType gameID = 1;
+        uint32 tableID = 2; // 如果 tableID = 0 不进桌
+        JoinType type = 3;  // 进桌类型,直接填对应数字也可
+
+    }
+
+    message GameExit {
+        GameType gameID = 1;
+    }
+}
+
+// 大厅消息
+message Lobby {
+    // 用户信息 推送 command: 
+    message UserSnapshot {
+        string name = 1;
+        string nick = 2;
+        double balance = 3;
+        string videoChips = 4;
+        string rouletteChips = 5;
+        uint64 limits = 6;
+        string moneysort = 7;
+        int64 parentID = 8;
+        bool isTip = 9;
+        bool isChat = 10; 
+        int64 uid = 11;
+    
+    }
+    // 桌面信息 推送
+    message TableSnapshot {
+        uint32 gameType = 1;
+        uint32 tableID = 2;
+        int32 stage = 3;
+        int32 inning = 4;
+        uint32 status = 5;
+        int32 time = 6;
+        string ways = 7;
+        string counts = 8;
+        bool isopen = 9;
+        string dealer = 10;
+        string limit = 11;
+        uint32 platform = 12;
+    }
+}
+
+// 游戏消息
+message Game {
+    enum Subtype { // 下注种类
+        UnKnow                = 0;
+        ClassicBaccarat       = 111;
+        MianYongBaccarat      = 112;
+        SuperBaccarat         = 113;
+        ChainBaccarat         = 114;
+        MianYongChainBaccarat = 115;
+        LongHu                = 211;
+        Roulette              = 311;
+        SicBo                 = 411;
+        FanTan                = 511;
+        TexasPoker            = 611;
+    }
+   
+
+    // 进桌 请求
+    message JoinTable {
+        uint32 tableID = 1;
+        UserRequest.JoinType type = 2;  // 直接填对应数字也可
+    }
+
+    //
+    message LeaveTable {
+        uint32 tableID = 1;
+    }
+
+    message Bet {
+        uint32 tableID = 1;
+        Subtype subtype = 2; // 
+        map<int32, double> detail = 3;  // <投注区, 金额>
+    }
+    message Tip {
+        uint32 tableID = 1;
+        int32  type = 2;
+        double amount = 3;
+    }
+    message UserSnapshot {
+        string name = 1;
+        double balance = 2;
+        uint32 home = 3;    // 当前所在桌号
+        uint32 vtable = 4;  // 包间号
+        uint32 vseat = 5;   // 包间座位号
+        double winlose = 6;
+        double totalbet = 7;
+        map<int32, double> betinfo = 8; //个人下注信息
+    }
+    // 桌面状态 推送
+    message TableStatus {
+        uint32 tableID = 1;
+        int32 stage = 2;
+        int32 inning = 3;
+        uint32 status = 4;
+        int32 time = 5;
+        string poker = 6;
+        string result = 7;
+        map<int32, double> betinfo = 8; //真实投注额  key 1 ~ 6   闲,庄,和,闲对,庄对,超级6
+        map<int32, double> vbetinfo = 9; //虚拟投注额
+        double winlose = 10;
+        int32 pokerIndex = 11; // 发牌时的索引号
+    }
+
+    // 桌面配置 推送
+    message TableConfig {
+        uint32 tableID = 1;
+        int32 time = 2;
+        string name = 3;
+        string dealer = 4;
+        string date = 5;
+        string limit = 6;
+    }
+
+    // 桌面历史数据 推送
+    message TableHistory {
+        uint32 tableID = 1;
+        string way = 2;    
+        string counts = 3;
+        string poker = 4;
+    }
+
+    message VirtualTable {
+        message Seat {
+            string uname = 1;
+            int64  uid = 2;
+            double balance = 3;
+            string avatar = 4;
+            map<int32, double> betinfo = 5;
+            uint32 seatID = 6;
+            bool   isSeat = 7;
+        } 
+
+        message Table {
+            uint32  tableID = 1; //虚拟桌号
+            uint32  maxSeatNum = 2;
+            map<uint32, Seat> seats = 3;
+        }
+    }
+
+}
+
